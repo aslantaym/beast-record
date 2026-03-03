@@ -19,6 +19,19 @@ PLAYLIST_ID = "UUX6OQ3DkcsbYNE6H8uQQuVA"
 VIDEOS_DIR = "videos"
 STATE_FILE = "state.json"
 
+def sanitize_filename(title):
+    """Make title safe for filenames"""
+    # Remove invalid characters
+    clean = re.sub(r'[<>:\"/\\|?*]', '', title)
+    # Replace spaces and punctuation with _
+    clean = re.sub(r'[\s\-.,;:!?]+', '_', clean)
+    # Remove leading/trailing _
+    clean = clean.strip('_')
+    # Limit length (GitHub + readability)
+    if len(clean) > 80:
+        clean = clean[:77] + '...'
+    return clean
+
 def parse_iso_duration(duration):
     if not duration:
         return 0
@@ -91,11 +104,13 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
-def get_video_file(video_id):
-    return f"{VIDEOS_DIR}/{video_id}.csv"
+def get_video_file(video_id, title):
+    clean = sanitize_filename(title)
+    return f"{VIDEOS_DIR}/{clean}_{video_id[:8]}.csv"
 
-def get_graph_file(video_id):
-    return f"{VIDEOS_DIR}/{video_id}_graph.png"
+def get_graph_file(video_id, title):
+    clean = sanitize_filename(title)
+    return f"{VIDEOS_DIR}/{clean}_{video_id[:8]}_graph.png"
 
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
@@ -111,12 +126,14 @@ if not video_id:
         print("❌ No video found")
         exit(1)
 
-video_file = get_video_file(video_id)
+video_file = get_video_file(video_id, title)
+graph_file = get_graph_file(video_id, title)
 
 if video_id != state.get("current_video_id"):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
     save_state(state)
+    # Fresh CSV for this video
     with open(video_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "views"])
@@ -133,12 +150,12 @@ with open(video_file, "a", newline="", encoding="utf-8") as f:
 
 print(f"✅ Logged {views:,} views → {video_file}")
 
-# ==================== ROBUST GRAPH ====================
+# ==================== GRAPH ====================
 print("📊 Starting graph generation...")
 try:
     df = pd.read_csv(video_file)
     
-    # Auto-fix broken/old CSVs
+    # Auto-fix any old/broken CSV
     if df.empty or 'timestamp' not in df.columns or 'views' not in df.columns:
         print(f"   Auto-fixing CSV (found columns: {list(df.columns)})")
         old_rows = df.values.tolist() if not df.empty else []
@@ -148,15 +165,15 @@ try:
             for row in old_rows:
                 if len(row) >= 2:
                     writer.writerow([row[0], row[1]])
-        df = pd.read_csv(video_file)  # reload fixed file
+        df = pd.read_csv(video_file)
 
     if len(df) < 1:
         print("   Only header so far - creating placeholder PNG")
         fig, ax = plt.subplots(figsize=(12, 7))
-        ax.text(0.5, 0.5, f"MrBeast — {title[:80]}...\n\nViews recording started!\nFirst graph update in 5 min", 
+        ax.text(0.5, 0.5, f"MrBeast — {title[:80]}...\n\nViews recording started!\nGraph appears in 5 min", 
                 ha='center', va='center', fontsize=14, color='#FF0000')
         ax.axis('off')
-        plt.savefig(get_graph_file(video_id), dpi=200, bbox_inches='tight')
+        plt.savefig(graph_file, dpi=200, bbox_inches='tight')
         plt.close()
     else:
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -179,9 +196,9 @@ try:
         plt.gca().yaxis.set_major_formatter(FuncFormatter(format_views))
 
         plt.tight_layout()
-        plt.savefig(get_graph_file(video_id), dpi=250, bbox_inches='tight')
+        plt.savefig(graph_file, dpi=250, bbox_inches='tight')
         plt.close()
-        print(f"📈 Graph successfully saved → {get_graph_file(video_id)}")
+        print(f"📈 Graph successfully saved → {graph_file}")
 except Exception as e:
     print("⚠️ Graph had an issue (but views saved):")
     print(traceback.format_exc())
