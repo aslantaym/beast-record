@@ -21,7 +21,7 @@ jobs:
       - name: Install system dependencies for graphs
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpng-dev libjpeg-dev libfreetype6-dev libgl1-mesa-glx fonts-dejavu
+          sudo apt-get install -y libpng-dev libjpeg-dev libfreetype6-dev fonts-dejavu
 
       - name: Set up Python
         uses: actions/setup-python@v5
