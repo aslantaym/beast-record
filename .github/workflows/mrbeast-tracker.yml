@@ -1,0 +1,40 @@
+name: MrBeast View Tracker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'     # every 5 minutes (public repo = free)
+  workflow_dispatch:          # lets you click “Run workflow” manually
+
+permissions:
+  contents: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run tracker
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python mrbeast_tracker.py
+
+      - name: Commit & push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update mrbeast views log"
+          file_pattern: "data/mrbeast_views.csv state.json"
+          commit_user_name: "mrbeast-bot"
+          commit_user_email: "bot@users.noreply.github.com"
