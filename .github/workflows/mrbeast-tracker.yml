@@ -2,8 +2,8 @@ name: MrBeast View Tracker
 
 on:
   schedule:
-    - cron: '*/5 * * * *'     # every 5 minutes (public repo = free)
-  workflow_dispatch:          # lets you click “Run workflow” manually
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests pandas matplotlib   # ← Added pandas + matplotlib for graphs
 
       - name: Run tracker
         env:
@@ -34,7 +34,7 @@ jobs:
       - name: Commit & push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update mrbeast views log"
-          file_pattern: "data/mrbeast_views.csv state.json"
+          commit_message: "chore: update mrbeast videos + graphs"
+          file_pattern: "videos/** state.json"   # ← Now commits all per-video files + graphs
           commit_user_name: "mrbeast-bot"
           commit_user_email: "bot@users.noreply.github.com"
