@@ -18,13 +18,18 @@ jobs:
         with:
           persist-credentials: true
 
+      - name: Install system dependencies for graphs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpng-dev libjpeg-dev libfreetype6-dev libgl1-mesa-glx fonts-dejavu
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install requests pandas matplotlib   # ← Added pandas + matplotlib for graphs
+      - name: Install Python dependencies
+        run: pip install requests pandas matplotlib
 
       - name: Run tracker
         env:
@@ -35,6 +40,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update mrbeast videos + graphs"
-          file_pattern: "videos/** state.json"   # ← Now commits all per-video files + graphs
+          file_pattern: "videos/** state.json"
           commit_user_name: "mrbeast-bot"
           commit_user_email: "bot@users.noreply.github.com"
