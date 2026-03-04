@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
-from datetime import datetime
+from datetime import datetime, timezone   # ← Fixed here
 import traceback
 
 API_KEY = os.getenv('YOUTUBE_API_KEY')
@@ -133,9 +133,9 @@ if views is None:
     print("Failed to get views")
     exit(1)
 
-timestamp = datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z')
+timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-# ====================== SAVE DATA WITH PANDAS (reliable) ======================
+# ====================== SAVE DATA ======================
 if video_id != state.get("current_video_id"):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
@@ -156,12 +156,11 @@ else:
     df.to_csv(video_file, index=False)
     print(f"✅ Logged {views:,} views | VPH: {vph:,.1f}")
 
-# ====================== LOAD DF FOR GRAPHS ======================
-df = pd.read_csv(video_file)
-print(f"📊 CSV loaded successfully: {len(df)} rows | columns: {list(df.columns)}")
-
 # ====================== GRAPHS ======================
-last_updated = f"Last updated: {datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M UTC')}"
+df = pd.read_csv(video_file)
+print(f"📊 CSV loaded: {len(df)} rows | columns: {list(df.columns)}")
+
+last_updated = f"Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
 
 for f in [graph_file, vph_graph_file]:
     if os.path.exists(f):
