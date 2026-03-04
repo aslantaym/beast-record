@@ -20,14 +20,9 @@ VIDEOS_DIR = "videos"
 STATE_FILE = "state.json"
 
 def sanitize_filename(title):
-    """Make title safe for filenames"""
-    # Remove invalid characters
     clean = re.sub(r'[<>:\"/\\|?*]', '', title)
-    # Replace spaces and punctuation with _
     clean = re.sub(r'[\s\-.,;:!?]+', '_', clean)
-    # Remove leading/trailing _
     clean = clean.strip('_')
-    # Limit length (GitHub + readability)
     if len(clean) > 80:
         clean = clean[:77] + '...'
     return clean
@@ -112,6 +107,10 @@ def get_graph_file(video_id, title):
     clean = sanitize_filename(title)
     return f"{VIDEOS_DIR}/{clean}_{video_id[:8]}_graph.png"
 
+def get_vph_graph_file(video_id, title):
+    clean = sanitize_filename(title)
+    return f"{VIDEOS_DIR}/{clean}_{video_id[:8]}_vph_graph.png"
+
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
 state = load_state()
@@ -128,15 +127,15 @@ if not video_id:
 
 video_file = get_video_file(video_id, title)
 graph_file = get_graph_file(video_id, title)
+vph_graph_file = get_vph_graph_file(video_id, title)
 
 if video_id != state.get("current_video_id"):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
     save_state(state)
-    # Fresh CSV for this video
     with open(video_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["timestamp", "views"])
+        writer.writerow(["timestamp", "views", "vph"])
 
 views = get_view_count(video_id)
 if views is None:
@@ -144,61 +143,111 @@ if views is None:
     exit(1)
 
 timestamp = datetime.utcnow().isoformat() + "Z"
+
+# ====================== CALCULATE VPH ======================
+vph = 0.0
+if os.path.exists(video_file):
+    try:
+        df_temp = pd.read_csv(video_file)
+        if len(df_temp) > 0:
+            prev_timestamp = pd.to_datetime(df_temp.iloc[-1]['timestamp'])
+            prev_views = int(df_temp.iloc[-1]['views'])
+            time_diff_hours = (pd.to_datetime(timestamp) - prev_timestamp).total_seconds() / 3600.0
+            if time_diff_hours > 0.001:
+                vph = (views - prev_views) / time_diff_hours
+    except:
+        pass
+
+# Append new row
 with open(video_file, "a", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
-    writer.writerow([timestamp, views])
+    writer.writerow([timestamp, views, round(vph, 1)])
 
-print(f"✅ Logged {views:,} views → {video_file}")
+print(f"✅ Logged {views:,} views | VPH: {vph:,.1f} → {video_file}")
 
-# ==================== GRAPH ====================
-print("📊 Starting graph generation...")
+# ====================== REPAIR OLD CSVs (add VPH if missing) ======================
 try:
     df = pd.read_csv(video_file)
-    
-    # Auto-fix any old/broken CSV
-    if df.empty or 'timestamp' not in df.columns or 'views' not in df.columns:
-        print(f"   Auto-fixing CSV (found columns: {list(df.columns)})")
-        old_rows = df.values.tolist() if not df.empty else []
+    if 'vph' not in df.columns:
+        print("   Repairing old CSV with historical VPH...")
+        new_rows = []
+        prev_t = None
+        prev_v = None
+        for _, row in df.iterrows():
+            curr_t = pd.to_datetime(row['timestamp'])
+            curr_v = int(row['views'])
+            if prev_t is None:
+                this_vph = 0.0
+            else:
+                hours = (curr_t - prev_t).total_seconds() / 3600.0
+                this_vph = (curr_v - prev_v) / hours if hours > 0.001 else 0.0
+            new_rows.append([row['timestamp'], curr_v, round(this_vph, 1)])
+            prev_t = curr_t
+            prev_v = curr_v
         with open(video_file, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["timestamp", "views"])
-            for row in old_rows:
-                if len(row) >= 2:
-                    writer.writerow([row[0], row[1]])
-        df = pd.read_csv(video_file)
+            writer.writerow(["timestamp", "views", "vph"])
+            writer.writerows(new_rows)
+        df = pd.read_csv(video_file)  # reload
+except:
+    pass
 
-    if len(df) < 1:
-        print("   Only header so far - creating placeholder PNG")
-        fig, ax = plt.subplots(figsize=(12, 7))
-        ax.text(0.5, 0.5, f"MrBeast — {title[:80]}...\n\nViews recording started!\nGraph appears in 5 min", 
-                ha='center', va='center', fontsize=14, color='#FF0000')
-        ax.axis('off')
-        plt.savefig(graph_file, dpi=200, bbox_inches='tight')
-        plt.close()
-    else:
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
-        plt.figure(figsize=(12, 7))
-        plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
+# ====================== VIEWS GRAPH ======================
+print("📊 Generating Views graph...")
+try:
+    df = pd.read_csv(video_file)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-        plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
-        plt.xlabel("Date & Time (UTC)")
-        plt.ylabel("Views")
-        plt.grid(True, alpha=0.4)
-        plt.xticks(rotation=45)
+    plt.figure(figsize=(12, 7))
+    plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
+    plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
+    plt.xlabel("Date & Time (UTC)")
+    plt.ylabel("Views")
+    plt.grid(True, alpha=0.4)
+    plt.xticks(rotation=45)
 
-        def format_views(x, pos):
-            if x >= 1_000_000:
-                return f'{x/1_000_000:.1f}M'
-            elif x >= 1_000:
-                return f'{x/1_000:.0f}K'
-            return f'{x:,.0f}'
-        plt.gca().yaxis.set_major_formatter(FuncFormatter(format_views))
+    def format_views(x, pos):
+        if x >= 1_000_000:
+            return f'{x/1_000_000:.1f}M'
+        elif x >= 1_000:
+            return f'{x/1_000:.0f}K'
+        return f'{x:,.0f}'
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(format_views))
 
-        plt.tight_layout()
-        plt.savefig(graph_file, dpi=250, bbox_inches='tight')
-        plt.close()
-        print(f"📈 Graph successfully saved → {graph_file}")
+    plt.tight_layout()
+    plt.savefig(graph_file, dpi=250, bbox_inches='tight')
+    plt.close()
+    print(f"📈 Views graph saved → {graph_file}")
 except Exception as e:
-    print("⚠️ Graph had an issue (but views saved):")
+    print("⚠️ Views graph failed:")
+    print(traceback.format_exc())
+
+# ====================== VPH GRAPH ======================
+print("📊 Generating VPH velocity graph...")
+try:
+    df = pd.read_csv(video_file)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    plt.figure(figsize=(12, 7))
+    plt.plot(df['timestamp'], df['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
+    plt.title(f"MrBeast — {title}\nViews Per Hour (Velocity)", fontsize=16, pad=20)
+    plt.xlabel("Date & Time (UTC)")
+    plt.ylabel("Views Per Hour")
+    plt.grid(True, alpha=0.4)
+    plt.xticks(rotation=45)
+
+    def format_vph(x, pos):
+        if x >= 1_000_000:
+            return f'{x/1_000_000:.1f}M/h'
+        elif x >= 1_000:
+            return f'{x/1_000:.0f}K/h'
+        return f'{x:,.0f}/h'
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(format_vph))
+
+    plt.tight_layout()
+    plt.savefig(vph_graph_file, dpi=250, bbox_inches='tight')
+    plt.close()
+    print(f"📈 VPH graph saved → {vph_graph_file}")
+except Exception as e:
+    print("⚠️ VPH graph failed:")
     print(traceback.format_exc())
