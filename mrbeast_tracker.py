@@ -1,14 +1,13 @@
 import os
 import json
-import csv
 import requests
 import re
-from datetime import datetime
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from datetime import datetime
 import traceback
 
 API_KEY = os.getenv('YOUTUBE_API_KEY')
@@ -134,52 +133,43 @@ if views is None:
     print("Failed to get views")
     exit(1)
 
-timestamp = datetime.utcnow().isoformat() + "Z"
+timestamp = datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z')
 
-# Save data
+# ====================== SAVE DATA WITH PANDAS (reliable) ======================
 if video_id != state.get("current_video_id"):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
     save_state(state)
-    with open(video_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["timestamp", "views", "vph"])
-        writer.writerow([timestamp, views, 0.0])
-    print(f"✅ First row written: {views:,} views")
+    
+    df_new = pd.DataFrame([[timestamp, views, 0.0]], columns=["timestamp", "views", "vph"])
+    df_new.to_csv(video_file, index=False)
+    print(f"✅ First row written: {views:,} views | VPH=0.0")
 else:
-    vph = 0.0
-    try:
-        df_temp = pd.read_csv(video_file)
-        if len(df_temp) > 0:
-            prev_timestamp = pd.to_datetime(df_temp.iloc[-1]['timestamp'])
-            prev_views = int(df_temp.iloc[-1]['views'])
-            time_diff_hours = (pd.to_datetime(timestamp) - prev_timestamp).total_seconds() / 3600.0
-            if time_diff_hours > 0.001:
-                vph = (views - prev_views) / time_diff_hours
-    except:
-        pass
-    with open(video_file, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([timestamp, views, round(vph, 1)])
+    df = pd.read_csv(video_file)
+    prev_timestamp = pd.to_datetime(df.iloc[-1]['timestamp'])
+    prev_views = int(df.iloc[-1]['views'])
+    time_diff_hours = (pd.to_datetime(timestamp) - prev_timestamp).total_seconds() / 3600.0
+    vph = (views - prev_views) / time_diff_hours if time_diff_hours > 0.001 else 0.0
+    
+    new_row = pd.DataFrame([[timestamp, views, round(vph, 1)]], columns=["timestamp", "views", "vph"])
+    df = pd.concat([df, new_row], ignore_index=True)
+    df.to_csv(video_file, index=False)
     print(f"✅ Logged {views:,} views | VPH: {vph:,.1f}")
 
-# Load df with strong type conversion
+# ====================== LOAD DF FOR GRAPHS ======================
 df = pd.read_csv(video_file)
-df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-df['views'] = pd.to_numeric(df['views'], errors='coerce').fillna(0)
-df['vph'] = pd.to_numeric(df['vph'], errors='coerce').fillna(0)
-df = df.dropna(subset=['timestamp'])
-print(f"📊 Data ready for graphs: {len(df)} rows | views type: {df['views'].dtype} | vph type: {df['vph'].dtype}")
+print(f"📊 CSV loaded successfully: {len(df)} rows | columns: {list(df.columns)}")
 
-last_updated = f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+# ====================== GRAPHS ======================
+last_updated = f"Last updated: {datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M UTC')}"
 
-# Delete old graphs
 for f in [graph_file, vph_graph_file]:
     if os.path.exists(f):
         os.remove(f)
 
 # Views graph
 try:
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
     plt.figure(figsize=(12, 7))
     plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
     plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
@@ -187,7 +177,8 @@ try:
     plt.ylabel("Views")
     plt.grid(True, alpha=0.4)
     plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
+             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
 
     def format_views(x, pos):
         if x >= 1_000_000: return f'{x/1_000_000:.1f}M'
@@ -198,13 +189,14 @@ try:
     plt.tight_layout()
     plt.savefig(graph_file, dpi=250, bbox_inches='tight')
     plt.close()
-    print(f"✅ Views graph SUCCESS → {graph_file}")
+    print(f"✅ Views graph created → {graph_file}")
 except Exception as e:
-    print("❌ Views graph failed:")
+    print("❌ Views graph error:")
     print(traceback.format_exc())
 
 # VPH graph
 try:
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
     plt.figure(figsize=(12, 7))
     plt.plot(df['timestamp'], df['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
     plt.title(f"MrBeast — {title}\nViews Per Hour (Velocity)", fontsize=16, pad=20)
@@ -212,7 +204,8 @@ try:
     plt.ylabel("Views Per Hour")
     plt.grid(True, alpha=0.4)
     plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
+             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
 
     def format_vph(x, pos):
         if x >= 1_000_000: return f'{x/1_000_000:.1f}M/h'
@@ -223,7 +216,7 @@ try:
     plt.tight_layout()
     plt.savefig(vph_graph_file, dpi=250, bbox_inches='tight')
     plt.close()
-    print(f"✅ VPH graph SUCCESS → {vph_graph_file}")
+    print(f"✅ VPH graph created → {vph_graph_file}")
 except Exception as e:
-    print("❌ VPH graph failed:")
+    print("❌ VPH graph error:")
     print(traceback.format_exc())
