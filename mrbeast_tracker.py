@@ -7,7 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
-from datetime import datetime, timezone   # ← Fixed here
+from datetime import datetime, timezone
 import traceback
 
 API_KEY = os.getenv('YOUTUBE_API_KEY')
@@ -135,14 +135,14 @@ if views is None:
 
 timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-# ====================== SAVE DATA ======================
-if video_id != state.get("current_video_id"):
+# ====================== SAVE DATA (always works now) ======================
+if video_id != state.get("current_video_id") or not os.path.exists(video_file):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
     save_state(state)
     
-    df_new = pd.DataFrame([[timestamp, views, 0.0]], columns=["timestamp", "views", "vph"])
-    df_new.to_csv(video_file, index=False)
+    df = pd.DataFrame([[timestamp, views, 0.0]], columns=["timestamp", "views", "vph"])
+    df.to_csv(video_file, index=False)
     print(f"✅ First row written: {views:,} views | VPH=0.0")
 else:
     df = pd.read_csv(video_file)
@@ -156,10 +156,9 @@ else:
     df.to_csv(video_file, index=False)
     print(f"✅ Logged {views:,} views | VPH: {vph:,.1f}")
 
-# ====================== GRAPHS ======================
-df = pd.read_csv(video_file)
-print(f"📊 CSV loaded: {len(df)} rows | columns: {list(df.columns)}")
+print(f"📊 CSV ready: {len(df)} rows | columns: {list(df.columns)}")
 
+# ====================== GRAPHS ======================
 last_updated = f"Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
 
 for f in [graph_file, vph_graph_file]:
