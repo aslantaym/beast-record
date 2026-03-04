@@ -136,17 +136,16 @@ if views is None:
 
 timestamp = datetime.utcnow().isoformat() + "Z"
 
-# ====================== SAVE DATA FIRST ======================
+# Save data
 if video_id != state.get("current_video_id"):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
     save_state(state)
-    
     with open(video_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "views", "vph"])
         writer.writerow([timestamp, views, 0.0])
-    print(f"✅ First row written for new video: {views:,} views")
+    print(f"✅ First row written: {views:,} views")
 else:
     vph = 0.0
     try:
@@ -159,32 +158,36 @@ else:
                 vph = (views - prev_views) / time_diff_hours
     except:
         pass
-    
     with open(video_file, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([timestamp, views, round(vph, 1)])
     print(f"✅ Logged {views:,} views | VPH: {vph:,.1f}")
 
-# ====================== LOAD DF FOR GRAPHS ======================
+# Load df with strong type conversion
 df = pd.read_csv(video_file)
-print(f"📊 Data loaded for graphs: {len(df)} rows, columns: {list(df.columns)}")
+df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+df['views'] = pd.to_numeric(df['views'], errors='coerce').fillna(0)
+df['vph'] = pd.to_numeric(df['vph'], errors='coerce').fillna(0)
+df = df.dropna(subset=['timestamp'])
+print(f"📊 Data ready for graphs: {len(df)} rows | views type: {df['views'].dtype} | vph type: {df['vph'].dtype}")
 
 last_updated = f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
 
-# ====================== VIEWS GRAPH (with fallback) ======================
-print("📊 Creating Views graph...")
+# Delete old graphs
+for f in [graph_file, vph_graph_file]:
+    if os.path.exists(f):
+        os.remove(f)
+
+# Views graph
 try:
-    df_plot = df.copy()
-    df_plot['timestamp'] = pd.to_datetime(df_plot['timestamp'])
     plt.figure(figsize=(12, 7))
-    plt.plot(df_plot['timestamp'], df_plot['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
+    plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
     plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
     plt.xlabel("Date & Time (UTC)")
     plt.ylabel("Views")
     plt.grid(True, alpha=0.4)
     plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
-             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
 
     def format_views(x, pos):
         if x >= 1_000_000: return f'{x/1_000_000:.1f}M'
@@ -197,31 +200,19 @@ try:
     plt.close()
     print(f"✅ Views graph SUCCESS → {graph_file}")
 except Exception as e:
-    print("❌ Views graph failed, creating fallback:")
+    print("❌ Views graph failed:")
     print(traceback.format_exc())
-    # Fallback text image
-    fig, ax = plt.subplots(figsize=(12, 7))
-    ax.text(0.5, 0.5, f"MrBeast — {title[:80]}\n\nViews: {views:,}\nVPH: 0.0\n\n{last_updated}\n\nGraph will update on next run", 
-            ha='center', va='center', fontsize=14, color='#FF0000')
-    ax.axis('off')
-    plt.savefig(graph_file, dpi=200, bbox_inches='tight')
-    plt.close()
-    print(f"✅ Fallback Views graph created → {graph_file}")
 
-# ====================== VPH GRAPH (with fallback) ======================
-print("📊 Creating VPH graph...")
+# VPH graph
 try:
-    df_plot = df.copy()
-    df_plot['timestamp'] = pd.to_datetime(df_plot['timestamp'])
     plt.figure(figsize=(12, 7))
-    plt.plot(df_plot['timestamp'], df_plot['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
+    plt.plot(df['timestamp'], df['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
     plt.title(f"MrBeast — {title}\nViews Per Hour (Velocity)", fontsize=16, pad=20)
     plt.xlabel("Date & Time (UTC)")
     plt.ylabel("Views Per Hour")
     plt.grid(True, alpha=0.4)
     plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
-             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
 
     def format_vph(x, pos):
         if x >= 1_000_000: return f'{x/1_000_000:.1f}M/h'
@@ -234,13 +225,5 @@ try:
     plt.close()
     print(f"✅ VPH graph SUCCESS → {vph_graph_file}")
 except Exception as e:
-    print("❌ VPH graph failed, creating fallback:")
+    print("❌ VPH graph failed:")
     print(traceback.format_exc())
-    # Fallback text image
-    fig, ax = plt.subplots(figsize=(12, 7))
-    ax.text(0.5, 0.5, f"MrBeast — {title[:80]}\n\nVPH data coming soon\n\n{last_updated}", 
-            ha='center', va='center', fontsize=14, color='#00AA00')
-    ax.axis('off')
-    plt.savefig(vph_graph_file, dpi=200, bbox_inches='tight')
-    plt.close()
-    print(f"✅ Fallback VPH graph created → {vph_graph_file}")
