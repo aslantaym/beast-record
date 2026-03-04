@@ -135,7 +135,7 @@ if views is None:
 
 timestamp = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
-# ====================== SAVE DATA (always works now) ======================
+# ====================== SAVE DATA ======================
 if video_id != state.get("current_video_id") or not os.path.exists(video_file):
     print(f"🎉 NEW LONG-FORM VIDEO: {title}")
     state = {"current_video_id": video_id, "current_title": title}
@@ -156,65 +156,57 @@ else:
     df.to_csv(video_file, index=False)
     print(f"✅ Logged {views:,} views | VPH: {vph:,.1f}")
 
-print(f"📊 CSV ready: {len(df)} rows | columns: {list(df.columns)}")
+print(f"📊 CSV ready with {len(df)} rows")
 
-# ====================== GRAPHS ======================
-last_updated = f"Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+# ====================== FORCE GRAPH UPDATE ======================
+last_updated = f"Last updated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\nCurrent views: {views:,}"
 
+# Delete old graphs first (this is the key to force update)
 for f in [graph_file, vph_graph_file]:
     if os.path.exists(f):
         os.remove(f)
 
 # Views graph
-try:
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    plt.figure(figsize=(12, 7))
-    plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
-    plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
-    plt.xlabel("Date & Time (UTC)")
-    plt.ylabel("Views")
-    plt.grid(True, alpha=0.4)
-    plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
-             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+plt.figure(figsize=(12, 7))
+plt.plot(df['timestamp'], df['views'], marker='o', linewidth=3, markersize=6, color='#FF0000')
+plt.title(f"MrBeast — {title}\nView Growth Over Time", fontsize=16, pad=20)
+plt.xlabel("Date & Time (UTC)")
+plt.ylabel("Views")
+plt.grid(True, alpha=0.4)
+plt.xticks(rotation=45)
+plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=11, 
+         verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.9))
 
-    def format_views(x, pos):
-        if x >= 1_000_000: return f'{x/1_000_000:.1f}M'
-        elif x >= 1_000: return f'{x/1_000:.0f}K'
-        return f'{x:,.0f}'
-    plt.gca().yaxis.set_major_formatter(FuncFormatter(format_views))
+def format_views(x, pos):
+    if x >= 1_000_000: return f'{x/1_000_000:.1f}M'
+    elif x >= 1_000: return f'{x/1_000:.0f}K'
+    return f'{x:,.0f}'
+plt.gca().yaxis.set_major_formatter(FuncFormatter(format_views))
 
-    plt.tight_layout()
-    plt.savefig(graph_file, dpi=250, bbox_inches='tight')
-    plt.close()
-    print(f"✅ Views graph created → {graph_file}")
-except Exception as e:
-    print("❌ Views graph error:")
-    print(traceback.format_exc())
+plt.tight_layout()
+plt.savefig(graph_file, dpi=250, bbox_inches='tight')
+plt.close()
+print(f"✅ Views graph UPDATED → {graph_file}")
 
 # VPH graph
-try:
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    plt.figure(figsize=(12, 7))
-    plt.plot(df['timestamp'], df['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
-    plt.title(f"MrBeast — {title}\nViews Per Hour (Velocity)", fontsize=16, pad=20)
-    plt.xlabel("Date & Time (UTC)")
-    plt.ylabel("Views Per Hour")
-    plt.grid(True, alpha=0.4)
-    plt.xticks(rotation=45)
-    plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=10, 
-             verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.8))
+plt.figure(figsize=(12, 7))
+plt.plot(df['timestamp'], df['vph'], marker='o', linewidth=3, markersize=6, color='#00AA00')
+plt.title(f"MrBeast — {title}\nViews Per Hour (Velocity)", fontsize=16, pad=20)
+plt.xlabel("Date & Time (UTC)")
+plt.ylabel("Views Per Hour")
+plt.grid(True, alpha=0.4)
+plt.xticks(rotation=45)
+plt.text(0.02, 0.98, last_updated, transform=plt.gca().transAxes, fontsize=11, 
+         verticalalignment='top', bbox=dict(boxstyle="round", facecolor="white", alpha=0.9))
 
-    def format_vph(x, pos):
-        if x >= 1_000_000: return f'{x/1_000_000:.1f}M/h'
-        elif x >= 1_000: return f'{x/1_000:.0f}K/h'
-        return f'{x:,.0f}/h'
-    plt.gca().yaxis.set_major_formatter(FuncFormatter(format_vph))
+def format_vph(x, pos):
+    if x >= 1_000_000: return f'{x/1_000_000:.1f}M/h'
+    elif x >= 1_000: return f'{x/1_000:.0f}K/h'
+    return f'{x:,.0f}/h'
+plt.gca().yaxis.set_major_formatter(FuncFormatter(format_vph))
 
-    plt.tight_layout()
-    plt.savefig(vph_graph_file, dpi=250, bbox_inches='tight')
-    plt.close()
-    print(f"✅ VPH graph created → {vph_graph_file}")
-except Exception as e:
-    print("❌ VPH graph error:")
-    print(traceback.format_exc())
+plt.tight_layout()
+plt.savefig(vph_graph_file, dpi=250, bbox_inches='tight')
+plt.close()
+print(f"✅ VPH graph UPDATED → {vph_graph_file}")
